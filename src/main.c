@@ -1601,7 +1601,7 @@ static void on_nvnc_client_new(struct nvnc_client* client)
 	ctl_server_event_connected(self->ctl, &info, self->nr_clients);
 }
 
-void parse_keyboard_option(struct wayvnc* self, const char* arg)
+static void parse_keyboard_option(struct wayvnc* self, char* arg)
 {
 	// Find optional variant, separated by -
 	char* index = strchr(arg, '-');
@@ -2220,8 +2220,10 @@ int main(int argc, char* argv[])
 	const char* output_name = NULL;
 	const char* seat_name = NULL;
 	const char* socket_path = NULL;
-	const char* keyboard_options = NULL;
 	const char* toplevel_id;
+
+	const char* keyboard_options = NULL;
+	char keyboard_options_buffer[256];
 
 	bool overlay_cursor = false;
 	bool show_performance = false;
@@ -2347,8 +2349,11 @@ int main(int argc, char* argv[])
 	self.selected_seat_name = seat_name;
 
 	keyboard_options = option_parser_get_value(&option_parser, "keyboard");
-	if (keyboard_options)
-		parse_keyboard_option(&self, keyboard_options);
+	if (keyboard_options) {
+		strlcpy(keyboard_options_buffer, keyboard_options,
+				sizeof(keyboard_options_buffer));
+		parse_keyboard_option(&self, keyboard_options_buffer);
+	}
 
 	log_level = log_level_from_string(log_level_name);
 	if (log_level < 0) {

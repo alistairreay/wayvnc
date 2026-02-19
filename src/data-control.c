@@ -27,6 +27,7 @@
 #include <neatvnc.h>
 
 #include "data-control.h"
+#include "vec.h"
 
 static const char custom_mime_type_data[] = "wayvnc";
 
@@ -35,9 +36,7 @@ struct receive_context {
 	struct aml_handler* handler;
 	LIST_ENTRY(receive_context) link;
 	int fd;
-	FILE* mem_fp;
-	size_t mem_size;
-	char* mem_data;
+	struct vec buffer;
 };
 
 struct send_context {
@@ -53,11 +52,8 @@ static void destroy_receive_context(struct receive_context* ctx)
 {
 	aml_stop(aml_get_default(), ctx->handler);
 	aml_unref(ctx->handler);
-
-	if (ctx->mem_fp)
-		fclose(ctx->mem_fp);
-	free(ctx->mem_data);
 	close(ctx->fd);
+	vec_destroy(&ctx->buffer);
 	LIST_REMOVE(ctx, link);
 	free(ctx);
 }
@@ -88,15 +84,14 @@ static void on_receive(struct aml_handler* handler)
 		nvnc_log(NVNC_LOG_ERROR, "Clipboard read failed: %m");
 		destroy_receive_context(ctx);
 	} else if (ret > 0) {
-		fwrite(&buf, 1, ret, ctx->mem_fp);
+		vec_append(&ctx->buffer, buf, ret);
 		return;
 	}
 
-	fclose(ctx->mem_fp);
-	ctx->mem_fp = NULL;
-
-	if (ctx->mem_size)
-		nvnc_send_cut_text(ctx->server, ctx->mem_data, ctx->mem_size);
+	if (ctx->buffer.len != 0)
+		nvnc_send_cut_text(ctx->server, ctx->buffer.data,
+				ctx->buffer.len);
+	vec_clear(&ctx->buffer);
 
 	destroy_receive_context(ctx);
 }
@@ -160,8 +155,7 @@ static void receive_data(void* data,
 
 	ctx->fd = pipe_fd[0];
 	ctx->server = self->server;
-	ctx->mem_fp = open_memstream(&ctx->mem_data, &ctx->mem_size);
-	if (!ctx->mem_fp) {
+	if (vec_init(&ctx->buffer, 4096) < 0) {
 		nvnc_log(NVNC_LOG_ERROR, "open_memstream() failed: %m");
 		goto open_memstream_failure;
 	}
@@ -181,7 +175,7 @@ static void receive_data(void* data,
 poll_start_failure:
 	aml_unref(ctx->handler);
 handler_failure:
-	fclose(ctx->mem_fp);
+	vec_destroy(&ctx->buffer);
 open_memstream_failure:
 	free(ctx);
 	close(pipe_fd[0]);

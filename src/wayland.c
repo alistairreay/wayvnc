@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 - 2025 Andri Yngvason
+ * Copyright (c) 2019 - 2026 Andri Yngvason
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -29,6 +29,7 @@
 #include <sys/param.h>
 #include <wayland-client-protocol.h>
 
+#include "ext-data-control-v1.h"
 #include "ext-foreign-toplevel-list-v1.h"
 #include "ext-image-capture-source-v1.h"
 #include "ext-image-copy-capture-v1.h"
@@ -94,6 +95,9 @@ static bool registry_add_input(void* data, struct wl_registry* registry,
 		return true;
 
 	if (CHECK_BIND(ext_transient_seat_manager_v1, 1))
+		return true;
+
+	if (CHECK_BIND(ext_data_control_manager_v1, 1))
 		return true;
 
 	return false;

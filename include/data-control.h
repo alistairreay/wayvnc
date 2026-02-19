@@ -19,6 +19,7 @@
 #include <neatvnc.h>
 
 #include "wlr-data-control-unstable-v1.h"
+#include "ext-data-control-v1.h"
 
 #include "sys/queue.h"
 
@@ -33,11 +34,22 @@ struct data_control {
 	struct nvnc* server;
 	struct receive_context_list receive_contexts;
 	struct send_context_list send_contexts;
-	struct zwlr_data_control_manager_v1* manager;
-	struct zwlr_data_control_device_v1* device;
-	struct zwlr_data_control_source_v1* selection;
-	struct zwlr_data_control_source_v1* primary_selection;
-	struct zwlr_data_control_offer_v1* offer;
+	struct zwlr_data_control_manager_v1* wlr_manager;
+	struct ext_data_control_manager_v1* ext_manager;
+	union {
+		struct {
+			struct zwlr_data_control_device_v1* device;
+			struct zwlr_data_control_source_v1* selection;
+			struct zwlr_data_control_source_v1* primary_selection;
+			struct zwlr_data_control_offer_v1* offer;
+		} wlr;
+		struct {
+			struct ext_data_control_device_v1* device;
+			struct ext_data_control_source_v1* selection;
+			struct ext_data_control_source_v1* primary_selection;
+			struct ext_data_control_offer_v1* offer;
+		} ext;
+	};
 	bool is_own_offer;
 	const char* mime_type;
 	/* x-wayvnc-client-(8 hexadecimal digits) + \0 */

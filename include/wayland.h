@@ -23,6 +23,7 @@
 #include <wayland-client-core.h>
 
 #define X_WAYLAND_PROTOCOLS \
+	X(ext_data_control_manager_v1) \
 	X(ext_foreign_toplevel_image_capture_source_manager_v1) \
 	X(ext_foreign_toplevel_list_v1) \
 	X(ext_image_copy_capture_manager_v1) \

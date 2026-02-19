@@ -656,7 +656,8 @@ static void on_client_cut_text(struct nvnc_client* nvnc_client,
 {
 	struct wayvnc_client* client = nvnc_get_userdata(nvnc_client);
 
-	if (client->data_control.manager) {
+	if (client->data_control.wlr_manager ||
+			client->data_control.ext_manager) {
 		data_control_to_clipboard(&client->data_control, text, len);
 	}
 }
@@ -1487,9 +1488,10 @@ static void client_detach_wayland(struct wayvnc_client* self)
 		pointer_destroy(&self->pointer);
 	self->pointer.pointer = NULL;
 
-	if (self->data_control.manager)
+	if (self->data_control.wlr_manager || self->data_control.ext_manager)
 		data_control_destroy(&self->data_control);
-	self->data_control.manager = NULL;
+	self->data_control.wlr_manager = NULL;
+	self->data_control.ext_manager = NULL;
 }
 
 static unsigned next_client_id = 1;
@@ -1567,7 +1569,7 @@ static void client_destroy(void* obj)
 	if (self->pointer.pointer)
 		pointer_destroy(&self->pointer);
 
-	if (self->data_control.manager)
+	if (self->data_control.wlr_manager || self->data_control.ext_manager)
 		data_control_destroy(&self->data_control);
 
 	free(self);
@@ -1773,10 +1775,16 @@ static void client_init_data_control(struct wayvnc_client* self)
 {
 	struct wayvnc* wayvnc = self->server;
 
-	if (!wayland->zwlr_data_control_manager_v1)
+	if (wayland->ext_data_control_manager_v1) {
+		self->data_control.ext_manager =
+			wayland->ext_data_control_manager_v1;
+	} else if (wayland->zwlr_data_control_manager_v1) {
+		self->data_control.wlr_manager =
+			wayland->zwlr_data_control_manager_v1;
+	} else {
 		return;
+	}
 
-	self->data_control.manager = wayland->zwlr_data_control_manager_v1;
 	data_control_init(&self->data_control, wayvnc->nvnc,
 			self->seat->wl_seat);
 }

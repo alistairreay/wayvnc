@@ -36,7 +36,7 @@ struct receive_context {
 	struct aml_handler* handler;
 	LIST_ENTRY(receive_context) link;
 	int fd;
-	struct vec buffer;
+	struct wv_vec buffer;
 };
 
 struct send_context {
@@ -53,7 +53,7 @@ static void destroy_receive_context(struct receive_context* ctx)
 	aml_stop(aml_get_default(), ctx->handler);
 	aml_unref(ctx->handler);
 	close(ctx->fd);
-	vec_destroy(&ctx->buffer);
+	wv_vec_destroy(&ctx->buffer);
 	LIST_REMOVE(ctx, link);
 	free(ctx);
 }
@@ -84,14 +84,14 @@ static void on_receive(struct aml_handler* handler)
 		nvnc_log(NVNC_LOG_ERROR, "Clipboard read failed: %m");
 		destroy_receive_context(ctx);
 	} else if (ret > 0) {
-		vec_append(&ctx->buffer, buf, ret);
+		wv_vec_append(&ctx->buffer, buf, ret);
 		return;
 	}
 
 	if (ctx->buffer.len != 0)
 		nvnc_send_cut_text(ctx->server, ctx->buffer.data,
 				ctx->buffer.len);
-	vec_clear(&ctx->buffer);
+	wv_vec_clear(&ctx->buffer);
 
 	destroy_receive_context(ctx);
 }
@@ -156,7 +156,7 @@ static void receive_data_finish(struct data_control* self,
 
 	ctx->fd = pipe_fd[0];
 	ctx->server = self->server;
-	if (vec_init(&ctx->buffer, 4096) < 0) {
+	if (wv_vec_init(&ctx->buffer, 4096) < 0) {
 		nvnc_log(NVNC_LOG_ERROR, "open_memstream() failed: %m");
 		goto open_memstream_failure;
 	}
@@ -176,7 +176,7 @@ static void receive_data_finish(struct data_control* self,
 poll_start_failure:
 	aml_unref(ctx->handler);
 handler_failure:
-	vec_destroy(&ctx->buffer);
+	wv_vec_destroy(&ctx->buffer);
 open_memstream_failure:
 	free(ctx);
 	close(pipe_fd[0]);

@@ -110,6 +110,7 @@ sources = [
 	'src/toplevel.c',
 	'src/desktop.c',
 	'src/wayland.c',
+	'src/vec.c',
 ]
 
 dependencies = [

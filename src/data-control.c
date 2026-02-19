@@ -124,33 +124,34 @@ static int dont_block(int fd)
 	return fcntl(fd, F_SETFL, ret | O_NONBLOCK);
 }
 
-static void receive_data_wlr(void* data,
-	struct zwlr_data_control_offer_v1* offer)
+static struct receive_context* receive_data_init(int pipe_fd[])
 {
-	struct data_control* self = data;
-	int pipe_fd[2];
-
 	if (pipe(pipe_fd) == -1) {
 		nvnc_log(NVNC_LOG_ERROR, "pipe() failed: %m");
-		return;
+		return NULL;
 	}
 
 	if (dont_block(pipe_fd[0]) == -1) {
 		nvnc_log(NVNC_LOG_ERROR, "Failed to set O_NONBLOCK on clipbooard receive fd");
-		close(pipe_fd[0]);
-		close(pipe_fd[1]);
-		return;
+		goto failure;
 	}
 
 	struct receive_context* ctx = calloc(1, sizeof(*ctx));
 	if (!ctx) {
 		nvnc_log(NVNC_LOG_ERROR, "OOM: %m");
-		close(pipe_fd[0]);
-		close(pipe_fd[1]);
-		return;
+		goto failure;
 	}
 
-	zwlr_data_control_offer_v1_receive(offer, self->mime_type, pipe_fd[1]);
+	return ctx;
+failure:
+	close(pipe_fd[0]);
+	close(pipe_fd[1]);
+	return NULL;
+}
+
+static void receive_data_finish(struct data_control* self,
+		struct receive_context* ctx, int pipe_fd[])
+{
 	close(pipe_fd[1]);
 
 	ctx->fd = pipe_fd[0];
@@ -179,6 +180,21 @@ handler_failure:
 open_memstream_failure:
 	free(ctx);
 	close(pipe_fd[0]);
+}
+
+static void receive_data_wlr(void* data,
+	struct zwlr_data_control_offer_v1* offer)
+{
+	struct data_control* self = data;
+	int pipe_fd[2];
+
+	struct receive_context *ctx = receive_data_init(pipe_fd);
+	if (!ctx)
+		return;
+
+	zwlr_data_control_offer_v1_receive(offer, self->mime_type, pipe_fd[1]);
+
+	receive_data_finish(self, ctx, pipe_fd);
 }
 
 static void data_control_offer_wlr(void* data,
@@ -275,11 +291,8 @@ zwlr_data_control_device_v1_listener data_control_device_listener_wlr = {
 	.primary_selection = data_control_device_primary_selection_wlr
 };
 
-static void
-data_control_source_send_wlr(void* data,
-	struct zwlr_data_control_source_v1* zwlr_data_control_source_v1,
-	const char* mime_type,
-	int32_t fd)
+static void data_control_source_send_common(void* data,
+	const char* mime_type, int32_t fd)
 {
 	struct data_control* self = data;
 	const char* d = self->cb_data;
@@ -356,6 +369,13 @@ ctx_alloc_failure:
 	nvnc_log(NVNC_LOG_ERROR, "Clipboard write incomplete");
 }
 
+static void data_control_source_send_wlr(void* data,
+	struct zwlr_data_control_source_v1* zwlr_data_control_source_v1,
+	const char* mime_type, int32_t fd)
+{
+	data_control_source_send_common(data, mime_type, fd);
+}
+
 static void data_control_source_cancelled_wlr(void* data,
 	struct zwlr_data_control_source_v1* zwlr_data_control_source_v1)
 {
@@ -409,55 +429,13 @@ static void receive_data_ext(void* data,
 	struct data_control* self = data;
 	int pipe_fd[2];
 
-	if (pipe(pipe_fd) == -1) {
-		nvnc_log(NVNC_LOG_ERROR, "pipe() failed: %m");
+	struct receive_context *ctx = receive_data_init(pipe_fd);
+	if (!ctx)
 		return;
-	}
-
-	if (dont_block(pipe_fd[0]) == -1) {
-		nvnc_log(NVNC_LOG_ERROR, "Failed to set O_NONBLOCK on clipbooard receive fd");
-		close(pipe_fd[0]);
-		close(pipe_fd[1]);
-		return;
-	}
-
-	struct receive_context* ctx = calloc(1, sizeof(*ctx));
-	if (!ctx) {
-		nvnc_log(NVNC_LOG_ERROR, "OOM: %m");
-		close(pipe_fd[0]);
-		close(pipe_fd[1]);
-		return;
-	}
 
 	ext_data_control_offer_v1_receive(offer, self->mime_type, pipe_fd[1]);
-	close(pipe_fd[1]);
 
-	ctx->fd = pipe_fd[0];
-	ctx->server = self->server;
-	if (vec_init(&ctx->buffer, 4096) < 0) {
-		nvnc_log(NVNC_LOG_ERROR, "open_memstream() failed: %m");
-		goto open_memstream_failure;
-	}
-
-	ctx->handler = aml_handler_new(ctx->fd, on_receive, ctx, NULL);
-	if (!ctx->handler) {
-		goto handler_failure;
-	}
-
-	if (aml_start(aml_get_default(), ctx->handler) < 0) {
-		goto poll_start_failure;
-	}
-
-	LIST_INSERT_HEAD(&self->receive_contexts, ctx, link);
-	return;
-
-poll_start_failure:
-	aml_unref(ctx->handler);
-handler_failure:
-	vec_destroy(&ctx->buffer);
-open_memstream_failure:
-	free(ctx);
-	close(pipe_fd[0]);
+	receive_data_finish(self, ctx, pipe_fd);
 }
 
 static void data_control_offer_ext(void* data,
@@ -560,79 +538,7 @@ data_control_source_send_ext(void* data,
 	const char* mime_type,
 	int32_t fd)
 {
-	struct data_control* self = data;
-	const char* d = self->cb_data;
-	size_t len = self->cb_len;
-	int ret;
-
-	assert(d);
-	assert(len);
-
-	if (strcmp(mime_type, self->custom_mime_type_name) == 0) {
-		d = custom_mime_type_data;
-		len = strlen(custom_mime_type_data);
-	}
-
-	if (dont_block(fd) == -1) {
-		nvnc_log(NVNC_LOG_ERROR, "Failed to set O_NONBLOCK on clipbooard send fd");
-		close(fd);
-		return;
-	}
-
-	ret = write(fd, d, len);
-	if (ret == -1) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			ret = 0;
-		} else {
-			nvnc_log(NVNC_LOG_ERROR, "Clipboard write failed: %m");
-			close(fd);
-			return;
-		}
-	} else if (ret == (int)len) {
-		close(fd);
-		return;
-	}
-
-	/* we did a partial write, so continue sending data asynchronously */
-
-	struct send_context* ctx = calloc(1, sizeof(*ctx));
-	if (!ctx) {
-		nvnc_log(NVNC_LOG_ERROR, "OOM: %m");
-		goto ctx_alloc_failure;
-		return;
-	}
-
-	ctx->fd = fd;
-	ctx->length = len - ret;
-	ctx->index = 0;
-	ctx->data = malloc(ctx->length);
-	if (!ctx->data) {
-		nvnc_log(NVNC_LOG_ERROR, "OOM: %m");
-		goto ctx_data_alloc_failure;
-	}
-	memcpy(ctx->data, d + ret, ctx->length);
-
-	ctx->handler = aml_handler_new(ctx->fd, on_send, ctx, NULL);
-	if (!ctx->handler)
-		goto handler_failure;
-
-	aml_set_event_mask(ctx->handler, AML_EVENT_WRITE);
-
-	if (aml_start(aml_get_default(), ctx->handler) < 0)
-		goto poll_start_failure;
-
-	LIST_INSERT_HEAD(&self->send_contexts, ctx, link);
-	return;
-
-poll_start_failure:
-	aml_unref(ctx->handler);
-handler_failure:
-	free(ctx->data);
-ctx_data_alloc_failure:
-	free(ctx);
-ctx_alloc_failure:
-	close(fd);
-	nvnc_log(NVNC_LOG_ERROR, "Clipboard write incomplete");
+	data_control_source_send_common(data, mime_type, fd);
 }
 
 static void data_control_source_cancelled_ext(void* data,

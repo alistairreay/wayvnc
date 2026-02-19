@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020 Scott Moreau
- * Copyright (c) 2020 Andri Yngvason
+ * Copyright (c) 2020 - 2026 Andri Yngvason
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -199,7 +199,7 @@ static void data_control_offer(void* data,
 		self->offer = zwlr_data_control_offer_v1;
 }
 
-struct zwlr_data_control_offer_v1_listener data_control_offer_listener = {
+static struct zwlr_data_control_offer_v1_listener data_control_offer_listener = {
 	data_control_offer
 };
 
@@ -367,7 +367,7 @@ static void data_control_source_cancelled(void* data,
 	zwlr_data_control_source_v1_destroy(zwlr_data_control_source_v1);
 }
 
-struct zwlr_data_control_source_v1_listener data_control_source_listener = {
+static struct zwlr_data_control_source_v1_listener data_control_source_listener = {
 	.send = data_control_source_send,
 	.cancelled = data_control_source_cancelled
 };

@@ -145,6 +145,14 @@ considered to be part of the key or the value.
 	The path to the private key file for TLS encryption. Only applicable
 	when *enable_auth*=true.
 
+*enable_vnc_auth*
+	Enable legacy VNC Authentication (RFB security type 2). This is a
+	password-only DES challenge-response scheme with no encryption. It is
+	required for compatibility with macOS Screen Sharing and other clients
+	that do not support VeNCrypt or RSA-AES. Requires *vnc_password* to be
+	set. Can be used alongside *enable_auth* to offer both modern and legacy
+	auth types simultaneously.
+
 *relax_encryption*
 	Don't require encryption after the user has been authenticated. This
 	enables some security types such as Apple Diffie-Hellman.
@@ -155,6 +163,11 @@ considered to be part of the key or the value.
 
 *username*
 	Choose a username for authentication.
+
+*vnc_password*
+	The password for legacy VNC Authentication (type 2). Only the first 8
+	characters are used (VNC protocol limitation). Only applicable when
+	*enable_vnc_auth*=true.
 
 *use_relative_paths*
 	Make file paths relative to the location of the config file.
@@ -197,6 +210,8 @@ password=p455w0rd
 rsa_private_key_file=rsa_key.pem
 private_key_file=tls_key.pem
 certificate_file=tls_cert.pem
+enable_vnc_auth=true
+vnc_password=secret
 ```
 
 # WAYVNCCTL CONTROL SOCKET

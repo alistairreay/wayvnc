@@ -35,6 +35,8 @@
 	X(string, xkb_layout) \
 	X(string, xkb_variant) \
 	X(string, xkb_options) \
+	X(bool, enable_vnc_auth) \
+	X(string, vnc_password) \
 	X(bool, use_relative_paths) \
 
 struct cfg {

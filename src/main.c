@@ -708,6 +708,9 @@ bool on_auth(const char* username, const char* password, void* ud)
 		return pam_auth(username, password);
 #endif
 
+	if (!self->cfg.username || !self->cfg.password)
+		return false;
+
 	if (strcmp(username, self->cfg.username) != 0)
 		return false;
 
@@ -1087,7 +1090,23 @@ static int init_nvnc(struct wayvnc* self)
 		auth_flags |= NVNC_AUTH_REQUIRE_ENCRYPTION;
 	}
 
-	if (self->cfg.enable_auth) {
+	if (self->cfg.enable_vnc_auth && self->cfg.vnc_password) {
+		nvnc_log(NVNC_LOG_WARNING,
+			"VNC Authentication (type 2) enabled. "
+			"This is a legacy auth method with weak security. "
+			"Use only for compatibility with clients like macOS Screen Sharing.");
+		if (nvnc_set_vnc_auth_password(self->nvnc, self->cfg.vnc_password) < 0) {
+			nvnc_log(NVNC_LOG_ERROR, "Failed to set VNC auth password");
+			goto auth_failure;
+		}
+		/* VNC Auth requires NVNC_AUTH_REQUIRE_AUTH to be offered,
+		 * and encryption cannot be required since VNC Auth is
+		 * unencrypted by design. */
+		auth_flags |= NVNC_AUTH_REQUIRE_AUTH;
+		auth_flags &= ~NVNC_AUTH_REQUIRE_ENCRYPTION;
+	}
+
+	if (self->cfg.enable_auth || self->cfg.enable_vnc_auth) {
 		if (nvnc_enable_auth(self->nvnc, auth_flags, on_auth, self) < 0) {
 			nvnc_log(NVNC_LOG_ERROR, "Failed to enable authentication");
 			goto auth_failure;
